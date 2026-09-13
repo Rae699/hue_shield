@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="dev.huesync.relay"
+    android:versionCode="1"
+    android:versionName="1.0.0">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="30" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <queries>
+        <package android:name="ch.rmy.android.http_shortcuts" />
+    </queries>
+    <application android:label="Hue Sync Relay Community"
+        android:icon="@android:drawable/ic_menu_send"
+        android:allowBackup="false"
+        android:supportsRtl="true">
+        <receiver android:name=".SceneReceiver" android:exported="true" />
+        <receiver android:name=".CompletionReceiver" android:exported="true" />
+        <service android:name=".RelayService" android:exported="false" />
+    </application>
+</manifest>

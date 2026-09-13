@@ -1,0 +1,22 @@
+Hue Sync Relay Community is an independent project.
+
+This package contains its own Java controller, configuration tools and documentation.
+HTTP Shortcuts, tvQuickActions, Android SDK tools and vendor firmware are separate
+products, not bundled or relicensed by this package. Their names identify compatible
+interfaces and referenced documentation; no endorsement is implied.
+
+Implementation references:
+- HTTP Shortcuts: https://github.com/Waboodoo/HTTP-Shortcuts
+  Documentation: https://http-shortcuts.rmy.ch/
+- Tasker plugin protocol: https://tasker.joaoapps.com/plugins-intro.html
+- tvQuickActions documentation: https://tvdevinfo.com/tvquickactions/
+- Philips Hue developer documentation: https://developers.meethue.com/
+- Sync Box client/API registration reference:
+  https://github.com/MadMonkey87/InnerCore.Api.HueSync
+- openHAB Hue Sync binding: https://www.openhab.org/addons/bindings/huesync/
+- Android developer tools/documentation: https://developer.android.com/
+
+The original controller was checked through a private home-theater installation.
+Private device configuration and credentials are deliberately excluded from this
+public application and documentation. Runtime compatibility still requires testing
+on the recipient's own devices and app versions.

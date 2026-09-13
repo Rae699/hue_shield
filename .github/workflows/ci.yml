@@ -1,0 +1,83 @@
+name: Tests and Android build
+
+'on':
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: false
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node for JavaScript behavior tests
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Set up Java for Android tools and pure Java tests
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+          overwrite-settings: false
+
+      - name: Run all Python and JavaScript behavior tests
+        run: python3 -B -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Run Android tests and compile a verification APK
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import secrets
+          import subprocess
+          import sys
+          import tempfile
+
+          # ubuntu-24.04 provides sdkmanager; request the exact build inputs.
+          sdk = Path(os.environ['ANDROID_HOME'])
+          manager = sdk / 'cmdline-tools/latest/bin/sdkmanager'
+          subprocess.run(
+              [str(manager), '--sdk_root=' + str(sdk),
+               'platforms;android-34', 'build-tools;34.0.0'],
+              input='y\n' * 100, text=True, check=True, timeout=300,
+          )
+
+          # This fresh CI key cannot produce updates to the community APK.
+          # Key and APK stay outside the checkout and are never published.
+          with tempfile.TemporaryDirectory(prefix='hue-relay-ci-', dir=os.environ['RUNNER_TEMP']) as temporary:
+              environment = os.environ.copy()
+              environment['HUE_RELAY_CI_PASSWORD'] = secrets.token_urlsafe(32)
+              print('::add-mask::' + environment['HUE_RELAY_CI_PASSWORD'], flush=True)
+              subprocess.run(
+                  [sys.executable, '-B', 'android/build.py', '--sdk', str(sdk),
+                   '--keystore', str(Path(temporary) / 'verification-signing.jks'),
+                   '--password-env', 'HUE_RELAY_CI_PASSWORD', '--generate-key',
+                   '--output', str(Path(temporary) / 'verification-only.apk')],
+                  env=environment, check=True,
+              )
+          PY

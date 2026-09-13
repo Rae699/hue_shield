@@ -1,0 +1,46 @@
+{
+  "package": "dev.huesync.relay",
+  "version": "1.0.0",
+  "actionPrefix": "dev.huesync.relay.",
+  "receiver": "dev.huesync.relay/.SceneReceiver",
+  "callbackScheme": "huesyncrelay",
+  "nonceVariable": "hsr_request_nonce",
+  "shortcuts": {
+    "PROBE": {
+      "id": "899d6091-2e51-5670-ac08-0ad3fdc06aad",
+      "name": "Hue Relay - Probe"
+    },
+    "START": {
+      "id": "7914b195-3555-5b8a-a4d5-bbc54890482e",
+      "name": "Hue Relay - Start"
+    },
+    "STOP": {
+      "id": "2b1b7f54-1a3e-53f1-9691-69d972a0ddfd",
+      "name": "Hue Relay - Stop"
+    },
+    "CINEMA": {
+      "id": "b7561efb-536a-5d5a-a411-00656802bede",
+      "name": "Hue Relay - Cinema"
+    },
+    "PAUSE": {
+      "id": "73430d53-3ed6-599b-aed3-76dc1e3c7cb3",
+      "name": "Hue Relay - Pause"
+    },
+    "READ": {
+      "id": "bcb47c7d-75e7-5560-96cb-9440bb4239fe",
+      "name": "Hue Relay - Read"
+    },
+    "CYCLE": {
+      "id": "8248dc33-5183-5a39-bda8-114d3cc349f2",
+      "name": "Hue Relay - Cycle"
+    },
+    "READ_CHECK": {
+      "id": "bcf66fef-ec09-5a74-9cb0-276bc6fc8c40",
+      "name": "Hue Relay - Read Check"
+    },
+    "READ_RECALL": {
+      "id": "53d095f1-ed94-5ee5-9a4a-0a66f253d140",
+      "name": "Hue Relay - Read Recall"
+    }
+  }
+}

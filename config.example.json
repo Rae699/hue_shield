@@ -1,0 +1,28 @@
+{
+  "ownSyncBox": {
+    "host": "your-sync-box.invalid",
+    "token": "REPLACE_WITH_YOUR_SYNC_BOX_TOKEN",
+    "certificateFingerprint": "REPLACE_WITH_VERIFIED_64_HEX_SHA256_CERTIFICATE_FINGERPRINT",
+    "input": 1
+  },
+  "optionalScenes": {
+    "enabled": false,
+    "ownBridge": {
+      "host": "your-hue-bridge.invalid",
+      "applicationKey": "REPLACE_WITH_YOUR_HUE_APPLICATION_KEY",
+      "certificateFingerprint": "REPLACE_WITH_VERIFIED_64_HEX_SHA256_CERTIFICATE_FINGERPRINT"
+    },
+    "scenes": {
+      "cinema": "REPLACE_WITH_YOUR_CINEMA_SCENE_RESOURCE_UUID",
+      "pause": "REPLACE_WITH_YOUR_PAUSE_SCENE_RESOURCE_UUID",
+      "read": "REPLACE_WITH_YOUR_READ_SCENE_RESOURCE_UUID"
+    },
+    "readGuard": {
+      "sensorResourceId": "REPLACE_WITH_YOUR_LIGHT_LEVEL_RESOURCE_UUID",
+      "start": "20:00",
+      "end": "06:00",
+      "luxThreshold": 2000,
+      "readFailOpen": true
+    }
+  }
+}

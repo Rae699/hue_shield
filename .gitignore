@@ -1,0 +1,21 @@
+# Personal configuration and exports
+config.local.json
+config.*.local.json
+generated/
+*.PRIVATE.zip
+*.zip
+*.log
+.env*
+# Build products and signing assets
+android/build/
+*.apk
+*.aab
+*.jks
+*.keystore
+*.p12
+*.pem
+# Generated release hashes and caches
+SHA256SUMS
+__pycache__/
+*.pyc
+.DS_Store
