@@ -1,11 +1,11 @@
 """Offline packaging tests; sensitive-looking fixtures are constructed at runtime."""
+import ast
 import importlib.util
 import io
 import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest import mock
 import zipfile
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'tools/package_release.py'
@@ -137,9 +137,13 @@ class ReleaseTests(unittest.TestCase):
         self.reject('output-path')
 
     def test_packaging_without_python39_path_api(self):
-        with mock.patch.object(Path, 'is_relative_to', create=True,
-                               side_effect=AssertionError('Python 3.9-only API used')):
-            release.build_release(self.root, self.output)
+        # Check our API usage, not pathlib internals: Python 3.12 implements
+        # the Python 3.8-compatible relative_to() using is_relative_to().
+        tree = ast.parse(SCRIPT.read_text())
+        unsupported = [node.lineno for node in ast.walk(tree)
+                       if isinstance(node, ast.Attribute) and node.attr == 'is_relative_to']
+        self.assertEqual(unsupported, [], 'Packager uses Python 3.9-only Path API at lines ' + str(unsupported))
+        release.build_release(self.root, self.output)
         release.verify_archive(self.output)
 
     def test_nested_traversal_and_expansion_limit_rejected(self):
