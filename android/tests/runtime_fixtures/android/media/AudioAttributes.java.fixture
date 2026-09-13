@@ -1,0 +1,1 @@
+package android.media;public class AudioAttributes {public static final int USAGE_MEDIA=1,USAGE_GAME=14;public int getUsage(){return USAGE_MEDIA;}}

@@ -1,0 +1,10 @@
+package android.os;
+import java.util.*;
+public class Handler {
+ public static final List<Entry> queue=new ArrayList<>(); public static int executed;
+ public static class Entry {public Handler owner; public Runnable run; public long due; Entry(Handler h,Runnable r,long d){owner=h;run=r;due=d;}}
+ public Handler(Looper l){} public void removeCallbacks(Runnable r){queue.removeIf(e->e.owner==this&&e.run==r);}
+ public void removeCallbacksAndMessages(Object o){queue.removeIf(e->e.owner==this);}
+ public boolean postDelayed(Runnable r,long d){queue.add(new Entry(this,r,SystemClock.now+d));return true;}
+ public static void advance(long target){while(true){Entry first=null;for(Entry e:queue)if(e.due<=target&&(first==null||e.due<first.due))first=e;if(first==null)break;queue.remove(first);SystemClock.now=first.due;executed++;if(executed>100000)throw new AssertionError("runaway scheduling");first.run.run();}SystemClock.now=target;}
+}

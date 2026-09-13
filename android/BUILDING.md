@@ -49,7 +49,7 @@ unset HUE_RELAY_KEYSTORE_PASSWORD
 
 If the chosen key already exists, omit `--generate-key`. That option deliberately refuses to overwrite a key. The default key alias is `hue-sync-relay`; use `--alias` when signing with an existing key that has another alias. If the key and keystore passwords differ, use a second environment variable and `--key-password-env`.
 
-The default result is `android/build/hue-sync-relay-1.0.0.apk`. `--output` chooses another output file. Each normal build runs the source checks, compiles, aligns, signs, verifies the signature and alignment, prints the package metadata, and reports a SHA-256 hash. Temporary compiled classes and unsigned files are removed automatically.
+The default result is `android/build/hue-sync-relay-1.1.0.apk`. `--output` chooses another output file. Each normal build runs the source checks, compiles, aligns, signs, verifies the signature and alignment, prints the package metadata, and reports a SHA-256 hash. Temporary compiled classes and unsigned files are removed automatically.
 
 The APK contains a public signing certificate. It never contains the signing private key. Keep signing keys, passwords, user configuration, SDK files, and personalized shortcut imports out of anything you share.
 
@@ -57,4 +57,4 @@ The APK contains a public signing certificate. It never contains the signing pri
 
 The public application ID is `dev.huesync.relay`, separate from the original private relay. Android requires the same signing key for an in-place update of this public package. A build you sign locally generally cannot update over a separately obtained community APK: uninstall that APK first, or keep using APKs from one trusted signer. The relay has no launcher screen; installation and automation setup are covered by the package README.
 
-This preserves the earlier controller algorithm and runtime target. The community package has offline source/build checks; actual behavior can depend on the Android TV device, Android version, HTTP Shortcuts version, and tvQuickActions setup. The build does not prove compatibility with every Android release.
+Version 1.1.0 adds awake idle checks and service-recreation reconciliation while preserving the runtime target, application identity and shortcut IDs (versionCode 2). The community package has offline source/build checks; actual behavior can depend on the Android TV device, Android version, HTTP Shortcuts version, and tvQuickActions setup. The build does not prove compatibility with every Android release.

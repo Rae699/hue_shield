@@ -35,11 +35,11 @@ class ReleaseTests(unittest.TestCase):
                                     'certificateFingerprint': 'REPLACE_FINGERPRINT'}}
         self.put('config.example.json', json.dumps(self.config))
         self.put('README.md', 'Public instructions')
-        self.put('contract.json', '{"version":"1.0.0"}')
+        self.put('contract.json', json.dumps({'version': release.VERSION}))
         self.put('android/AndroidManifest.xml', '<manifest/>')
         self.put('android/src/example/Relay.java', 'class Relay {}')
         self.put('tools/example.py', 'print("example")')
-        self.put('releases/hue-sync-relay-1.0.0.apk', archive({'classes.dex': b'synthetic dex'}))
+        self.put(release.APK, archive({'classes.dex': b'synthetic dex'}))
 
     def put(self, name, data):
         path = self.root / name
@@ -69,7 +69,7 @@ class ReleaseTests(unittest.TestCase):
 
     def test_nested_apk_private_key_rejected_without_echo(self):
         secret = b'-----BEGIN ' + b'PRIVATE KEY-----'
-        self.put('releases/hue-sync-relay-1.0.0.apk', archive({'assets/data.txt': secret}))
+        self.put(release.APK, archive({'assets/data.txt': secret}))
         message = self.reject('private-key')
         self.assertNotIn(secret.decode(), message)
         self.assertIn('assets/data.txt', message)
@@ -80,7 +80,7 @@ class ReleaseTests(unittest.TestCase):
         for secret, kind in values:
             with self.subTest(kind=kind):
                 nested = archive({'credential.txt': secret})
-                self.put('releases/hue-sync-relay-1.0.0.apk', archive({'assets/data.zip': nested}))
+                self.put(release.APK, archive({'assets/data.zip': nested}))
                 self.assertNotIn(secret.decode(), self.reject(kind))
 
     def test_addresses_user_paths_and_mac_are_rejected(self):
@@ -144,16 +144,16 @@ class ReleaseTests(unittest.TestCase):
 
     def test_nested_traversal_and_expansion_limit_rejected(self):
         for name in ['../escape', '/absolute', 'C:/escape']:
-            self.put('releases/hue-sync-relay-1.0.0.apk', archive({name: b'x'}))
+            self.put(release.APK, archive({name: b'x'}))
             self.reject('archive-path')
-        self.put('releases/hue-sync-relay-1.0.0.apk', archive({'assets/large': b'x' * (8 * 1024 * 1024 + 1)}))
+        self.put(release.APK, archive({'assets/large': b'x' * (8 * 1024 * 1024 + 1)}))
         self.reject('size-limit')
 
     def test_nested_archive_depth_is_bounded(self):
         data = b'end'
         for _ in range(4):
             data = archive({'nested.zip' if data.startswith(b'PK') else 'end.txt': data})
-        self.put('releases/hue-sync-relay-1.0.0.apk', data)
+        self.put(release.APK, data)
         self.reject('archive-depth')
 
     def test_existing_output_symlink_is_not_followed(self):
@@ -179,7 +179,7 @@ class ReleaseTests(unittest.TestCase):
     def test_source_archive_works_without_apk_and_checksums_all_members(self):
         (self.root / release.APK).unlink()
         result = release.build_release(self.root, source_only=True)
-        self.assertEqual(result.name, 'hue-sync-relay-source-1.0.0.zip')
+        self.assertEqual(result.name, f'hue-sync-relay-source-{release.VERSION}.zip')
         release.verify_archive(result)
         with zipfile.ZipFile(result) as z:
             self.assertIn('android/src/example/Relay.java', z.namelist())
@@ -268,6 +268,36 @@ class ReleaseTests(unittest.TestCase):
                 with self.assertRaises(release.ReleaseError) as caught:
                     release.build_release(self.root, self.output, source_only=True)
                 self.assertIn('binary-source-file', str(caught.exception))
+
+    def test_release_names_follow_repository_contract_version(self):
+        contract = json.loads((SCRIPT.parent.parent / 'contract.json').read_text())
+        self.assertEqual(release.VERSION, contract['version'])
+        self.assertEqual(release.APK, f"releases/hue-sync-relay-{contract['version']}.apk")
+        result = release.build_release(self.root)
+        self.assertEqual(result.name, f"hue-sync-community-{contract['version']}.zip")
+
+    def test_runtime_java_fixture_is_included_and_checksummed(self):
+        name = 'android/tests/runtime_fixtures/android/app/Service.java.fixture'
+        self.put(name, 'package android.app; public class Service {}')
+        release.build_release(self.root, self.output, source_only=True)
+        release.verify_archive(self.output)
+        with zipfile.ZipFile(self.output) as z:
+            self.assertIn(name, z.namelist())
+            self.assertIn(name, z.read('SHA256SUMS').decode())
+
+    def test_runtime_fixture_exception_is_limited_to_java_under_fixture_directory(self):
+        for name in ['android/tests/Service.java.fixture',
+                     'android/src/runtime_fixtures/Service.java.fixture',
+                     'android/tests/runtime_fixtures_other/Service.java.fixture',
+                     'android/tests/runtime_fixtures/config.json.fixture',
+                     'android/tests/runtime_fixtures/Service.fixture']:
+            with self.subTest(name=name):
+                self.assertFalse(release.allowed(name))
+
+    def test_runtime_java_fixture_still_gets_secret_scan(self):
+        self.put('android/tests/runtime_fixtures/Service.java.fixture',
+                 b'-----BEGIN ' + b'PRIVATE KEY-----')
+        self.reject('private-key')
 
     def test_extra_apk_is_not_an_allowed_source_file(self):
         self.put('releases/other.apk', b'binary')

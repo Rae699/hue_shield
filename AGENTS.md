@@ -35,7 +35,7 @@ Separate core sync tests from optional scene tests. Document unresolved gaps hon
 
 ## Development and tests
 
-Work locally first; do not use a real theater for automated tests. Preserve the single-request controller, bounded recovery windows, callback nonce/generation checks, sleep compensation and native Read check/recall sequence. Do not add endless polling, overlapping Start loops, nested shortcut launches or activities that steal focus as a shortcut around a bug.
+Work locally first; do not use a real theater for automated tests. Preserve the single-request controller, bounded recovery windows, callback nonce/generation checks, sleep compensation and native Read check/recall sequence. Preserve the single awake idle Probe every 60 seconds; healthy/error/not-ready results return to idle and only usable inactive/non-video results open bounded recovery. Do not add continuous recovery polling, overlapping Start loops, nested shortcut launches or activities that steal focus as a shortcut around a bug.
 
 Run relevant tests for changes, then the complete checks before claiming a release is ready:
 

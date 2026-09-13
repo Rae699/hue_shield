@@ -1,6 +1,6 @@
 {
   "package": "dev.huesync.relay",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "actionPrefix": "dev.huesync.relay.",
   "receiver": "dev.huesync.relay/.SceneReceiver",
   "callbackScheme": "huesyncrelay",

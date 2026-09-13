@@ -1,0 +1,7 @@
+package android.content;
+public class Context {public static final int MODE_PRIVATE=0;public static final String POWER_SERVICE="power",DISPLAY_SERVICE="display",AUDIO_SERVICE="audio",NOTIFICATION_SERVICE="notification";
+ public static final SharedPreferences prefs=new SharedPreferences();public static final android.os.PowerManager power=new android.os.PowerManager();public static final android.media.AudioManager audio=new android.media.AudioManager();
+ public Object getSystemService(String name){if(name.equals(POWER_SERVICE))return power;if(name.equals(DISPLAY_SERVICE))return new android.hardware.display.DisplayManager();if(name.equals(AUDIO_SERVICE))return audio;return new android.app.NotificationManager();}
+ public SharedPreferences getSharedPreferences(String n,int m){return prefs;}
+ public Intent registerReceiver(BroadcastReceiver r,IntentFilter f){return null;} public void unregisterReceiver(BroadcastReceiver r){}
+}

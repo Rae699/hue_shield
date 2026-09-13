@@ -66,7 +66,7 @@ To select your own playback scope, repeat `--media-app` for each package. Provid
 python3 tools/configure_tvqa.py --base OWN_EXPORT.zip --output generated/tvqa-scenes-custom-merge.zip --scenes --media-app tv.emby.embyatv --media-app com.google.android.youtube.tv
 ```
 
-For the optional Emby foreground/audio fallback, add `--emby-fallback` to a command that also includes `--scenes`. It adds scoped Emby enter/exit rules for `tv.emby.embyatv`; it is not a general audio detector for every app. Only enable it if you use Emby and need that fallback.
+For the optional Emby foreground/audio fallback, add `--emby-fallback` to a command that also includes `--scenes`. It adds scoped Emby enter/exit rules for `tv.emby.embyatv`; it is not a general audio detector for every app. Only enable it if you use Emby and need that fallback. After relay process recreation, a fresh Emby entry event is required: a saved foreground flag does not restart audio observation or replay a cached scene. Other scene rules and guards are unchanged.
 
 Restore the generated ZIP with **Merge**, never **Overwrite all**. Review existing rules that target the same lights, grant the event permissions needed, and confirm the new event macros are enabled. A generator refusal about a changed community scope means the existing community rule needs review before a fresh export; unrelated rules should be retained.
 

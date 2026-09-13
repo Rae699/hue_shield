@@ -2,7 +2,7 @@
 
 Run the commands below from the extracted community package folder. They use your own devices and credentials. The generator works offline; pairing and the checks you perform after installation contact your devices. No AI model, API subscription or cloud relay is needed for normal operation.
 
-This community APK and its generated configuration have offline/build validation. The public APK has not been installed on a TV, and the new imports have not been imported into the actual apps. The earlier original installation supplied the live-tested control logic; that does not constitute a live test of this newly configured package. See [TESTING.md](TESTING.md) for the validation boundary.
+The 1.1.0 recovery changes passed offline tests and builds. Matching behavior in the upgraded original private installation recovered API sync after a controlled Hue Stop and a simulated helper crash, and completed an API-verified sleep/wake cycle; the owner then visually confirmed the strip kept following while entering and leaving TiviMate multiview. The public APK has not been installed on a TV, and the new imports have not been imported into the actual apps. The earlier original installation supplied the live-tested control logic; that does not constitute a live test of this newly configured package. See [TESTING.md](TESTING.md) for the validation boundary.
 
 ## 1. Prepare your own setup
 
@@ -54,13 +54,13 @@ The command prints the output path. With the filename above, the output is `gene
 
 ## 3. Build and install the relay and HTTP Shortcuts entries
 
-This source-only edition includes no APK. First follow [BUILDING.md](../android/BUILDING.md) and put your compiled APK at `releases/hue-sync-relay-1.0.0.apk`, or substitute your build output path below.
+This source-only edition includes no APK. First follow [BUILDING.md](../android/BUILDING.md) and put your compiled APK at `releases/hue-sync-relay-1.1.0.apk`, or substitute your build output path below.
 
 On SHIELD, enable Developer options by selecting the build number repeatedly in its About settings, then enable network debugging. Menu wording depends on the Android TV version. Use the address/port shown by your device and approve the computer's debugging connection on the TV. A typical connection is:
 
 ```sh
 adb connect SHIELD_IP:5555
-adb install releases/hue-sync-relay-1.0.0.apk
+adb install releases/hue-sync-relay-1.1.0.apk
 ```
 
 The relay package is `dev.huesync.relay`. It runs as a background service and has no launcher screen. For later updates signed with the same community key, use `adb install -r` with the new APK. Do not uninstall a different package to fix a signature mismatch without first reviewing what is installed.
@@ -104,6 +104,10 @@ adb shell am broadcast -f 0x20 -n dev.huesync.relay/.SceneReceiver -a dev.huesyn
 This starts real Sync Box checks and can enable video sync. Confirm the resulting state in the Hue app. The relay waits for the configured input to be linked and carry supported video; it does not start sync merely because the TV woke up.
 
 Then use the normal sleep/wake and reboot controls. Confirm that sync turns off on sleep and resumes when video is ready after wake/boot. Off reconciliation includes a later confirmation, so allow the checks to finish. Recheck the three enabled event rules if manual broadcasts work but lifecycle events do not.
+
+After an awake recovery window ends, the service checks status once per idle minute. Allow up to 60 seconds before fault detection, plus request/readiness delays. A healthy, failed or not-ready check returns to idle; usable video with inactive or non-video sync opens a new bounded recovery attempt. Android may recreate a killed service, which then checks the actual interactive state, but restart timing is not guaranteed. Force-stop needs a later eligible explicit startup event.
+
+A manual Stop in the Hue app while the relay remains awake can be reversed by the next idle check. To stop relay automation while awake, send `dev.huesync.relay.SYNC_STOP`; this cancels idle maintenance and performs bounded off reconciliation until a later Start/boot or other applicable event starts work again. A later process recreation uses current TV state, so this is not a permanent pause preference. Sleep also cancels maintenance. API-active status with dark or static lights remains a visual troubleshooting case.
 
 If a request fails, check the selected input, local connectivity, your token and the verified certificate fingerprint. Do not bypass the pin to make an error disappear. Once core behavior works, add optional room scenes using [SCENES.md](SCENES.md).
 

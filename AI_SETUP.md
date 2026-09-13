@@ -55,17 +55,19 @@ The target is an explicit broadcast receiver, `dev.huesync.relay/.SceneReceiver`
 
 ## 4. Verify core behavior first
 
-Check a manual relay Start event with actual supported video, then sleep/wake and reboot. Allow for boot-event delivery and the bounded readiness window. Use both local relay logs and a visual confirmation of the strip. Record what actually passed.
+Check a manual relay Start event with actual supported video, then sleep/wake and reboot. Allow for boot-event delivery and the bounded readiness window. Boot still waits 20 seconds from event receipt. After recovery finishes, the awake service checks once per idle minute; allow up to 60 seconds for detection plus request/readiness delays. A process restart reconciles the current interactive state, but Android does not guarantee when it restarts the service. Use both local relay logs and a visual confirmation of the strip. Record what actually passed.
 
 If direct relay events work but normal power controls do not, inspect enabled tvQuickActions events. If requests fail, check local reachability, selected input and authenticated certificate/token configuration. If Hue reports active yet the strip shows a static dark color, inspect actual video and entertainment-area behavior; do not claim the controller fixed it based on an API flag.
 
-Stop retrying once the configured window expires. A later event can open a new window. Do not add infinite polling or start a new background process after every app change.
+Each recovery attempt stops after its bounded window. Awake idle maintenance then sends one Probe after 60 seconds: healthy, failed or not-ready results return to idle; usable video with inactive or non-video sync opens another bounded recovery window. Do not turn the idle check into continuous Start retries. Sleep and explicit relay Stop disable maintenance. A manual Stop in the Hue app while the relay remains awake may be reversed by its next idle check. Force-stop suppresses Android restart until a later eligible explicit startup event.
+
+The public 1.1.0 package has not been installed on a TV. The upgraded original private installation demonstrated idle recovery after a controlled Hue Stop and Android sticky restart after a simulated helper crash, plus normal idle sleep/wake, using matching generic behavior sources. The controlled recovery checks confirmed API state. The owner then visually confirmed that the strip kept following while entering and leaving TiviMate multiview; this does not establish that multiview itself triggered recovery. A simulated crash does not establish restart behavior for every process kill, memory-pressure case or force-stop. Keep historical live results separate from these changes.
 
 ## 5. Add scenes only when requested
 
 Follow [SCENES.md](docs/SCENES.md). Use the recipient's own Bridge key, verified Bridge certificate, existing v2 scene resource UUIDs and light-level resource UUID. These are separate from Sync Box credentials. Check local time and sensor guards. The field `luxThreshold` means raw Hue `light_level`, not physical lux.
 
-Generic scenes need useful media playback events. The optional Emby fallback is scoped to Emby foreground context. TiviMate scene support was not established, and Silo was not tested in the original installation. Test each requested app rather than generalizing from Moonfin or YouTube.
+Generic scenes need useful media playback events. The optional Emby fallback is scoped to Emby foreground context. Process recreation does not reuse a saved Emby foreground flag or replay a cached scene; a fresh Emby entry event is required. TiviMate scene support was not established, and Silo was not tested in the original installation. Test each requested app rather than generalizing from Moonfin or YouTube.
 
 ## Completion report
 

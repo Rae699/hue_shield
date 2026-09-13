@@ -1,0 +1,8 @@
+package android.content; import java.util.*;
+public class SharedPreferences {public final Map<String,Object> values=new HashMap<>();
+ public long getLong(String k,long d){return values.containsKey(k)?((Number)values.get(k)).longValue():d;}
+ public boolean getBoolean(String k,boolean d){return values.containsKey(k)?(Boolean)values.get(k):d;}
+ public String getString(String k,String d){return values.containsKey(k)?(String)values.get(k):d;}
+ public boolean contains(String k){return values.containsKey(k);} public Editor edit(){return new Editor();}
+ public class Editor {Map<String,Object> changed=new HashMap<>();public Editor putLong(String k,long v){changed.put(k,v);return this;}public Editor putBoolean(String k,boolean v){changed.put(k,v);return this;}public Editor putString(String k,String v){changed.put(k,v);return this;}public Editor remove(String k){changed.put(k,null);return this;} public boolean commit(){for(String k:changed.keySet()){if(changed.get(k)==null)values.remove(k);else values.put(k,changed.get(k));}return true;}public void apply(){commit();}}
+}

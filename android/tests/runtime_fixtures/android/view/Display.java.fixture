@@ -1,0 +1,1 @@
+package android.view;public class Display {public static final int DEFAULT_DISPLAY=0;public Mode getMode(){return new Mode();}public static class Mode {public int getModeId(){return 1;}public int getPhysicalWidth(){return 1920;}public int getPhysicalHeight(){return 1080;}public float getRefreshRate(){return 60;}}}

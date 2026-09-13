@@ -1,6 +1,6 @@
 # Architecture
 
-Hue Sync Relay separates Android event handling from authenticated device requests. The public package is `dev.huesync.relay`. Its controller derives from an earlier working installation; the public APK and freshly generated imports have offline/build validation, not live validation on a TV. See [TESTING.md](TESTING.md).
+Hue Sync Relay separates Android event handling from authenticated device requests. The public package is `dev.huesync.relay`. Its controller derives from an earlier working installation. The public APK and freshly generated imports have offline/build validation and remain uninstalled on a TV. Matching generic behavior in the upgraded private installation has API evidence for idle recovery, sticky recreation after a simulated crash and normal idle sleep/wake; the owner also confirmed the strip kept following while entering and leaving TiviMate multiview. See [TESTING.md](TESTING.md).
 
 ## Component map
 
@@ -33,7 +33,7 @@ flowchart LR
     F --> S
 ```
 
-The core event source is **tvQuickActions**: screen on → `SYNC_START`, screen off → `SYNC_STOP`, power on/boot → `SYNC_BOOT`, all under the `dev.huesync.relay.` prefix. The [Android manifest](../android/AndroidManifest.xml) has no boot receiver. The service's screen-off listener is registered only while the service exists; it does not replace external startup events.
+The core event source is **tvQuickActions**: screen on → `SYNC_START`, screen off → `SYNC_STOP`, power on/boot → `SYNC_BOOT`, all under the `dev.huesync.relay.` prefix. The [Android manifest](../android/AndroidManifest.xml) has no boot receiver. The service's screen-off listener is registered only while the service exists; it does not replace external startup events. The service returns `START_STICKY`. A new service instance, including null-intent recreation, reconciles `PowerManager.isInteractive()` instead of replaying the saved desired state: awake schedules a bounded wake check; asleep schedules bounded Stop/off reconciliation. Explicit boot retains its 20-second delay. Android decides whether and when to recreate the service; force-stop is not an ordinary process kill.
 
 While resident and the TV is interactive, the service can request recovery after the default display's mode ID, dimensions or refresh rate change. That comparison does not inspect HDR metadata. An HDR-only transition may produce no detectable change. Duplicate wake/recovery events inside an active window are coalesced.
 
@@ -57,10 +57,11 @@ Controller times use elapsed realtime. Optional scene windows use the TV's local
 - Wake schedules its first Probe after 2 seconds; boot after 20 seconds **from event receipt**, not from physical power-on.
 - A recovery decision window lasts 90 seconds, with at most 12 Probes. Typical retry/verification checks are 5 seconds apart. Start requires more than 15 seconds left for the command and verification.
 - Start/Stop completion schedules a Probe after 3 seconds. Off confirmation requires two inactive observations, with a 10-second compensation interval after the first.
-- A pending callback may wait up to 45 seconds. A timeout ends uncertain startup work; asleep state can request another Stop within its remaining window.
+- A pending callback may wait up to 45 seconds. A timeout ends uncertain startup work; asleep state can request another Stop within its remaining window. The service commits a pending-request lease before dispatch, and recreation waits out a still-valid lease before sending another request. Elapsed-time validation rejects expired or clearly invalid leases; explicit boot clears the old lease. This protects against overlapping a possibly still-running external request, without replaying its old callback or decision.
+- While awake and idle, one Probe runs after 60 seconds. Healthy, failed or not-ready results return to idle and schedule the next minute check. A valid ready result showing inactive or non-video sync opens a new 90-second recovery window, counting that Probe toward the 12-Probe limit. Maintenance shares the one-request slot and waits behind scenes and active recovery.
 - Pause waits 3 seconds so newer playback can cancel it. Read decisions carry both generation and scene revision; sleep or a newer scene invalidates them.
 
-These are scheduling limits, not guarantees that hardware changes state within exactly 90 seconds. An HTTP request already sent cannot be recalled. Sleep supersedes pending decisions and prioritizes Stop once the in-flight operation finishes or times out. The service is event-driven when idle; it does not permanently poll the box after recovery ends.
+These are scheduling limits, not guarantees that hardware changes state within exactly 90 seconds. An HTTP request already sent cannot be recalled. Sleep supersedes pending decisions and prioritizes Stop once the in-flight operation finishes or times out. Sleep disables idle maintenance and clears queued scene decisions. A manual Hue-app Stop while the relay stays awake may be reversed by maintenance. Explicit relay `SYNC_STOP` disables maintenance until later applicable work; it is not a persisted pause across process recreation. Fault detection may take up to 60 seconds plus request/readiness delays. Status checks cannot detect API-active but visibly dark lights.
 
 ## Device trust and observable state
 
@@ -68,7 +69,7 @@ The relay has no Android `INTERNET` permission and contains no device token or B
 
 [`templates/probe.js`](../templates/probe.js) derives readiness from the selected input, HDMI-active/linked flags, supported video and positive dimensions. `active` and `video` are API-reported state. Neither these flags nor a successful Start response prove the lamps visibly follow the picture. Manual sync and visual confirmation remain necessary installation checks.
 
-The Emby fallback uses anonymous Android media/game audio activity **only while tvQuickActions reports Emby foreground**. It debounces playing for one second and cancels pending Emby pause on exit/resume. It does not identify the audio source by app UID and is not a general fallback for every media app.
+The Emby fallback uses anonymous Android media/game audio activity **only while tvQuickActions reports Emby foreground**. It debounces playing for one second and cancels pending Emby pause on exit/resume. It does not identify the audio source by app UID and is not a general fallback for every media app. Process recreation deliberately discards cached Emby foreground context and pending scenes; only a fresh `EMBY_ENTER` event enables this fallback again. Existing Cinema/Pause/Read guards and scene rules are otherwise unchanged.
 
 ## Checks and change boundaries
 

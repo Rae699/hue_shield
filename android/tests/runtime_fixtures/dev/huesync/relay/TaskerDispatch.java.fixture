@@ -1,0 +1,2 @@
+package dev.huesync.relay;import java.util.*;
+public class TaskerDispatch {public static final String VARIABLES="variables",RESULT_CODE="resultCode";public static final List<NativeController.Request> requests=new ArrayList<>();public static boolean fail;public static void start(android.content.Context c,NativeController.Request r){if(fail)throw new IllegalStateException("synthetic dispatch failure");requests.add(r);}}

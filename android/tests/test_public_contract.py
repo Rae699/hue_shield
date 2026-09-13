@@ -51,7 +51,7 @@ class PublicContractTest(unittest.TestCase):
         manifest = ET.parse(path).getroot()
         self.assertEqual(manifest.get("package"), self.contract["package"])
         self.assertEqual(manifest.get(ANDROID + "versionName"), self.contract["version"])
-        self.assertEqual(manifest.get(ANDROID + "versionCode"), "1")
+        self.assertEqual(manifest.get(ANDROID + "versionCode"), "2")
         self.assertEqual(manifest.find("application").get(ANDROID + "label"), "Hue Sync Relay Community")
         self.assertEqual([p.get(ANDROID + "name") for p in manifest.findall("uses-permission")],
                          ["android.permission.FOREGROUND_SERVICE"])

@@ -1,4 +1,6 @@
-# Community 1.0.0 release checks
+# Historical community 1.0.0 release checks
+
+This record applies only to version 1.0.0. It is retained as historical evidence and does not establish validation of the 1.1.0 recovery changes. See [TESTING.md](TESTING.md) for current scope.
 
 Validation performed on 13 September 2026:
 

@@ -1,0 +1,21 @@
+package org.json;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/** Restricted to the flat synthetic completion objects used by these tests. */
+public class JSONObject {
+    private final Map<String,Object> values=new HashMap<>();
+    public JSONObject(String source) {
+        Matcher matcher=Pattern.compile("\"([^\"]+)\"\\s*:\\s*(\"[^\"]*\"|true|false)").matcher(source);
+        while(matcher.find()) {
+            String value=matcher.group(2);
+            values.put(matcher.group(1),value.startsWith("\"")
+                ? value.substring(1,value.length()-1) : Boolean.valueOf(value));
+        }
+    }
+    public Object opt(String key) {return values.get(key);}
+    public String optString(String key) {Object value=values.get(key);return value instanceof String?(String)value:"";}
+    public boolean getBoolean(String key) {return (Boolean)values.get(key);}
+}

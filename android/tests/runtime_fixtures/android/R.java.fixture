@@ -1,0 +1,1 @@
+package android; public class R {public static class drawable {public static int ic_menu_send=1;}}

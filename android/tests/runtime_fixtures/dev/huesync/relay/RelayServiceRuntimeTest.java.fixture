@@ -1,0 +1,165 @@
+package dev.huesync.relay;
+
+import android.app.Service;
+import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.SystemClock;
+
+/** Runs the production service and controller against a deterministic Android event loop. */
+public final class RelayServiceRuntimeTest {
+    private static void require(boolean condition,String message) {if(!condition)throw new AssertionError(message);}
+    private static RelayService create() {RelayService service=new RelayService();service.onCreate();return service;}
+    private static int send(RelayService service,String kind) {return service.onStartCommand(kind==null?null:new Intent("dev.huesync.relay."+kind),0,1);}
+    private static NativeController.Request last() {return TaskerDispatch.requests.get(TaskerDispatch.requests.size()-1);}
+    private static void complete(NativeController.Request request,boolean ready,boolean active) {
+        Bundle variables=new Bundle();
+        variables.putString("%result","{\"kind\":\""+request.kind+"\",\"nonce\":\""+request.nonce+"\",\"ok\":true,\"ready\":"+ready+",\"active\":"+active+",\"video\":"+active+"}");
+        RelayService.acceptCompletion(new Intent().setData(Uri.parse("huesyncrelay://complete/"+request.nonce))
+            .putExtra(TaskerDispatch.VARIABLES,variables).putExtra(TaskerDispatch.RESULT_CODE,-1));
+    }
+    private static void nativeReadCallbacks() {
+        RelayService service=create();send(service,"READ");
+        require(last().kind.equals("READ_CHECK"),"Read starts with a guard");
+        NativeController.Request check=last();complete(check,true,false);
+        require(TaskerDispatch.requests.size()==2&&last().kind.equals("READ_RECALL"),"valid completion JSON must release the native Read recall");
+        complete(last(),true,false);
+        require(TaskerDispatch.requests.size()==2,"Read recall completion must not replay a scene");
+    }
+    private static void bootDelay() {
+        RelayService service=create();send(service,"SYNC_BOOT");long started=SystemClock.now;
+        Handler.advance(started+19999);require(TaskerDispatch.requests.isEmpty(),"boot must preserve its 20 second readiness delay");
+        Handler.advance(started+20000);require(TaskerDispatch.requests.size()==1&&last().kind.equals("PROBE"),"boot should issue one Probe at 20 seconds");
+    }
+    private static void freshEmby() {
+        Context.audio.configs.add(new android.media.AudioPlaybackConfiguration());
+        RelayService service=create();send(service,"EMBY_ENTER");long started=SystemClock.now;
+        Handler.advance(started+999);require(TaskerDispatch.requests.isEmpty(),"fresh Emby playback must retain debounce");
+        Handler.advance(started+1000);require(TaskerDispatch.requests.size()==1&&last().kind.equals("CINEMA"),"fresh Emby event must still apply Cinema after debounce");
+    }
+    private static void awakeRestart() {
+        RelayService service=create();int result=send(service,null);
+        require(result==Service.START_STICKY,"awake null-intent restart must remain sticky");
+        require(!service.stopped,"awake restart must remain resident");
+        Handler.advance(SystemClock.now+2000);
+        require(TaskerDispatch.requests.size()==1&&last().kind.equals("PROBE"),"awake recreation must reconcile sync after wake delay");
+    }
+    private static void asleepRestart() {
+        Context.power.interactive=false;Context.prefs.edit().putString("desired","awake").commit();
+        RelayService service=create();send(service,null);Handler.advance(SystemClock.now+2000);
+        require(!TaskerDispatch.requests.isEmpty()&&last().kind.equals("STOP"),"sleeping recreation must reconcile off regardless of remembered awake state");
+        for(NativeController.Request r:TaskerDispatch.requests)require(!r.kind.equals("START"),"sleep must not enable sync");
+    }
+    private static void freshRead() {
+        RelayService service=create();send(service,"READ");
+        require(last().kind.equals("READ_CHECK"),"Read must retain its native guard");complete(last(),false,false);
+        Handler.advance(SystemClock.now+2000);
+        require(last().kind.equals("PROBE"),"a fresh scene event must also recover missing sync ownership");
+    }
+    private static void rememberedEmby() {
+        Context.prefs.edit().putBoolean("embyForeground",true).commit();Context.audio.configs.add(new android.media.AudioPlaybackConfiguration());
+        RelayService service=create();send(service,"SYNC_START");Handler.advance(SystemClock.now+2000);
+        for(NativeController.Request r:TaskerDispatch.requests)require(!r.kind.equals("CINEMA")&&!r.kind.equals("PAUSE"),"recreation must not replay a cached Emby room scene");
+        require(!TaskerDispatch.requests.isEmpty()&&last().kind.equals("PROBE"),"restart must still recover strip sync");
+    }
+    private static void outstandingLease() {
+        RelayService old=create();send(old,"SYNC_START");Handler.advance(SystemClock.now+2000);
+        NativeController.Request original=last();old.onDestroy();
+        RelayService restarted=create();send(restarted,null);
+        Handler.advance(original.started+44999);
+        require(TaskerDispatch.requests.size()==1,"restart must not overlap the outstanding HTTP operation");
+        Handler.advance(original.started+45000);
+        require(TaskerDispatch.requests.size()==2&&last().kind.equals("PROBE"),"restart lease must expire within 45 seconds of original dispatch");
+        NativeController.Request fresh=last();
+        require(fresh.generation>original.generation,"recreation must advance the persisted generation");
+        complete(original,true,false);
+        require(TaskerDispatch.requests.size()==2,"stale completion must not authorize Start");
+        complete(fresh,true,true);
+        require(TaskerDispatch.requests.size()==2,"healthy current completion must not issue Start");
+    }
+    private static void failedDispatchCleanup() {
+        TaskerDispatch.fail=true;
+        RelayService service=create();send(service,"READ");
+        require(Context.prefs.getLong("requestUntil",0)==0,"failed dispatch must clear persistent request lease immediately before possible shutdown");
+        require(Context.prefs.getString("requestNonce","").isEmpty(),"failed dispatch must clear persistent nonce");
+        service.onDestroy();TaskerDispatch.fail=false;
+        RelayService restarted=create();send(restarted,null);Handler.advance(SystemClock.now+2000);
+        require(TaskerDispatch.requests.size()==1&&last().kind.equals("PROBE"),"restart after failed dispatch must not wait for nonexistent external request");
+    }
+    private static void completedLease(boolean asleep) {
+        RelayService old=create();send(old,"READ");
+        NativeController.Request original=last();old.onDestroy();
+        Context.power.interactive=!asleep;
+        RelayService restarted=create();send(restarted,null);
+        Handler.advance(original.started+2000);
+        complete(new NativeController.Request(original.kind,"wrong",original.generation,0,original.started),true,false);
+        require(TaskerDispatch.requests.size()==1,"wrong callback nonce must retain restart lease");
+        Bundle invalid=new Bundle();invalid.putString("%result","{}");
+        RelayService.acceptCompletion(new Intent().setData(Uri.parse("huesyncrelay://complete/"+original.nonce))
+            .putExtra(TaskerDispatch.VARIABLES,invalid).putExtra(TaskerDispatch.RESULT_CODE,-1));
+        require(TaskerDispatch.requests.size()==1,"invalid callback must retain restart lease");
+        for(String badResult:new String[]{
+            "{\"kind\":\"READ_CHECK\",\"nonce\":\"wrong\",\"ok\":true,\"ready\":true,\"active\":false,\"video\":false}",
+            "{\"kind\":\"PROBE\",\"nonce\":\""+original.nonce+"\",\"ok\":true,\"ready\":true,\"active\":false,\"video\":false}"}) {
+            invalid.putString("%result",badResult);
+            RelayService.acceptCompletion(new Intent().setData(Uri.parse("huesyncrelay://complete/"+original.nonce))
+                .putExtra(TaskerDispatch.VARIABLES,invalid).putExtra(TaskerDispatch.RESULT_CODE,-1));
+            require(TaskerDispatch.requests.size()==1,"mismatched result nonce or kind must retain restart lease");
+        }
+        complete(original,true,false);
+        require(TaskerDispatch.requests.size()==2&&last().kind.equals(asleep?"STOP":"PROBE"),"matching old completion must immediately release restart lease for current state");
+        require(!last().nonce.equals(original.nonce),"current state request must have fresh nonce");
+        complete(original,true,false);
+        require(TaskerDispatch.requests.size()==2,"duplicate old completion must not release fresh request or replay Read");
+    }
+    private static RelayService idleMinute() {
+        RelayService service=create();send(service,"SYNC_START");
+        // Finish healthy bounded startup using real callback delivery; each loop also advances timers.
+        int completed=0;
+        for(int n=0;n<1000;n++) {
+            while(completed<TaskerDispatch.requests.size())complete(TaskerDispatch.requests.get(completed++),true,true);
+            if(Handler.queue.size()==1&&Handler.queue.get(0).due-SystemClock.now>=60000)break;
+            Handler.advance(SystemClock.now+250);
+        }
+        require(Handler.queue.size()==1,"idle awake service must retain exactly one minute callback");
+        long due=Handler.queue.get(0).due;
+        require(due-SystemClock.now==60000,"idle scheduling must wait a full minute, not spin at 250 ms");
+        int count=TaskerDispatch.requests.size(),ticks=Handler.executed;
+        Handler.advance(due-1);require(TaskerDispatch.requests.size()==count&&Handler.executed==ticks,"no idle polling or handler spin before minute deadline");
+        Handler.advance(due);require(TaskerDispatch.requests.size()==count+1&&last().kind.equals("PROBE"),"minute deadline must dispatch one status request");
+        complete(last(),true,true);
+        require(Handler.queue.size()==1&&Handler.queue.get(0).due-SystemClock.now==60000,"healthy maintenance must schedule exactly one next minute callback");
+        require(TaskerDispatch.requests.size()==count+1,"healthy maintenance must not Start");
+        return service;
+    }
+    private static void sleepCancelsMinute() {
+        RelayService service=idleMinute();int completed=TaskerDispatch.requests.size();Context.power.interactive=false;
+        // A fresh stop event must replace the awake maintenance timer with bounded off reconciliation.
+        RelayService.acceptCompletion(new Intent()); // An unrelated callback cannot create extra work.
+        send(service,"SYNC_STOP");
+            for(int n=0;n<500;n++) {
+                while(completed<TaskerDispatch.requests.size())complete(TaskerDispatch.requests.get(completed++),true,false);
+                Handler.advance(SystemClock.now+250);
+            }
+            require(Handler.queue.isEmpty(),"sleep must cancel recurring maintenance after off confirmation");
+            int count=TaskerDispatch.requests.size();Handler.advance(SystemClock.now+180000);
+            require(TaskerDispatch.requests.size()==count,"sleep must have no recurring status requests");
+            require(service.stopped,"service should stop after off reconciliation");
+
+    }
+    public static void main(String[] args) {
+        switch(args[0]) {
+            case "failedDispatchCleanup":failedDispatchCleanup();break;
+            case "completedAwakeLease":completedLease(false);break;case "completedAsleepLease":completedLease(true);break;
+            case "nativeReadCallbacks":nativeReadCallbacks();break;
+            case "bootDelay":bootDelay();break;case "freshEmby":freshEmby();break;
+            case "awakeRestart":awakeRestart();break;case "asleepRestart":asleepRestart();break;
+            case "freshRead":freshRead();break;case "rememberedEmby":rememberedEmby();break;
+            case "outstandingLease":outstandingLease();break;case "idleMinute":idleMinute();break;
+            case "sleepCancelsMinute":sleepCancelsMinute();break;default:throw new AssertionError("unknown case");
+        }
+        System.out.println("PASS "+args[0]);
+    }
+}

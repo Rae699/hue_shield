@@ -1,6 +1,6 @@
 # Validation and limitations
 
-Release: 1.0.0. The public app is `dev.huesync.relay`. Its controller policy is carried over from the earlier working installation, with a separate application identity, callback scheme and shortcut IDs. Credentials and setup exports are generated anew for each recipient.
+Release: 1.1.0 (versionCode 2). The public app is `dev.huesync.relay`. This update adds awake idle checks and service-recreation reconciliation. Its public application identity, callback scheme and shortcut IDs are unchanged; they remain separate from the original private installation. Credentials and setup exports are generated anew for each recipient.
 
 ## Offline checks
 
@@ -16,6 +16,8 @@ Python 3.8 or newer and the standard library run the setup-tool tests. The scrip
 Coverage includes:
 
 - Controller wake/boot timing, bounded retries, duplicate-event handling, request serialization, stale replies, sleep compensation and callback timeout.
+- Awake idle checks, error/not-ready backoff, bounded recovery escalation, scene serialization and sleep cancellation.
+- The actual RelayService runs against offline Android runtime fixtures to exercise sticky/null recreation, interactive-state reconciliation, stale Emby context, persisted pending leases and service shutdown.
 - Native Read check/recall ordering, scene supersession, Pause debounce and scoped Emby audio gating.
 - Public manifest and shared shortcut IDs, build configuration, signature/alignment verification during APK builds.
 - Config validation, certificate pins, authentication headers, selected input, actual JavaScript execution with synthetic responses, optional time/sensor guards and the absence of nested shortcut launches.
@@ -23,9 +25,25 @@ Coverage includes:
 - tvQuickActions synthetic exports: preservation of unrelated data, noncolliding IDs, idempotent generation, refusal to silently activate disabled saved actions or override constrained rules.
 - Release allowlisting and nested archive scanning, planted secret-like fixtures, path traversal, symlinks, expansion limits and checksum verification.
 
-The signed APK is built from the included public Java source. The build verifies its Android signature, ZIP alignment and package metadata. The release is also extracted to a clean directory for the tests and a fresh build using separately supplied SDK tools and signing key. A successful clean build means it does not depend on the private project's source or backups; it does not imply a bit-for-bit reproducible APK across tool versions and build times.
+The build process verifies APK signatures, ZIP alignment and package metadata. Release validation should also extract the archive to a clean directory for tests and a fresh build using separately supplied SDK tools and signing key. Historical 1.0.0 build results are recorded in [RELEASE-CHECKS.md](RELEASE-CHECKS.md); they do not verify the 1.1.0 changes. A successful clean build means it does not depend on the private project's source or backups; it does not imply a bit-for-bit reproducible APK across tool versions and build times.
 
-## What was tested live before this public release
+The final 1.1.0 offline run passed 66 root Python tests, 22 Android Python tests (including 13 actual-service fixture tests), 110 controller checks, 40 policy checks and 7 Emby audio checks. Both private and public APK builds passed. Tests and an APK build also passed from a clean extracted source archive. An exact-value audit of 87 known private values found no matches in the checked source archive. These checks do not prove that arbitrary private data could never escape a scanner.
+
+## Recovery checks on the upgraded private installation
+
+On 13 September 2026, the original private package was upgraded to 1.3 with its existing signing key. Its generic behavior sources matched the public recovery implementation. The public 1.1.0 package and newly generated imports remain uninstalled.
+
+| Scenario | Observed result |
+| --- | --- |
+| Awake idle maintenance | The first healthy Probe ran about 60 seconds after startup checks finished. The next Probe ran about one minute after the first completed. No continuous Start loop was observed. |
+| Controlled Hue Stop while awake | The next minute check detected inactive sync and dispatched Start about 15.5 seconds after the controlled Stop; the API reported active about 19.1 seconds after Stop. |
+| Simulated helper VM crash | Android scheduled a service restart after one second. The new process received a null restart and reconciled current interactive state. After a test Hue Stop, it probed about 2 seconds after recreation, started about 2.5 seconds after recreation and reported API-active about 6.9 seconds after recreation, without a manual wake or app trigger. |
+| Sleep then wake | Sleep dispatched Stop; the API reported inactive about 4.4 seconds later and again after the compensation interval, with four asleep observations remaining inactive. Wake created a new service instance in the same process. The input initially reported zero dimensions; once a Probe reported ready video, Start followed about 0.2 seconds later and API-active about 4 seconds after readiness (about 27 seconds after wake). Active state remained observed for at least another 31 seconds. |
+| TiviMate multiview | After the recovery checks, the owner entered and left multiview and confirmed the strip lights kept following. No sync loss or forced recovery during this visual check was established. |
+
+The controlled recovery rows above are API and service observations; the TiviMate multiview row records the separate owner-observed visual result. The simulated crash demonstrates sticky recreation in this run. It does not establish restart timing for every SIGKILL, memory-pressure termination or force-stop. The live sleep occurred about five seconds after startup checks finished, so this cycle verifies normal idle sleep/wake behavior. It does not demonstrate sleep interrupting an in-flight request; those races are covered by offline tests.
+
+## Historical live observations from the original installation
 
 These observations belong to the **earlier original installation**, using SHIELD Android 11, HTTP Shortcuts 4.6 and tvQuickActions 3.7:
 
@@ -45,11 +63,13 @@ These observations belong to the **earlier original installation**, using SHIELD
 
 The relay cannot repair an invalid HDMI picture, incompatible HDCP chain, cable failure or unavailable Hue entertainment area. Ready/API-active status does not prove the lamps visibly follow video. Test manual syncing first and verify the lights visually after setup.
 
-Recovery depends on tvQuickActions delivering lifecycle events, HTTP Shortcuts being allowed to run, the service remaining alive and the box becoming reachable within a bounded window. A resolution/refresh-mode change can trigger a check; an HDR-only transition may not produce a display-mode callback. There is no permanent status polling after the recovery window ends. A killed service or a fault outside a window can require a new wake/playback event or an explicit Start broadcast.
+Recovery depends on tvQuickActions delivering lifecycle events and HTTP Shortcuts being allowed to run. While awake, the resident service sends one idle Probe after 60 seconds; a valid ready inactive/non-video result opens a bounded 90-second/12-Probe recovery attempt. Healthy, failed or not-ready checks return to idle. Detection can add up to 60 seconds, plus request/readiness delays, and scene or pending-request work can defer it. A resolution/refresh-mode change can trigger an earlier check; an HDR-only transition may not produce that callback. API-active/video status with dark or static lights cannot be detected by maintenance.
+
+`START_STICKY` permits Android to recreate a killed service, but restart timing is not guaranteed. Recreation uses actual interactive state and waits out a valid persisted 45-second pending-request lease. Force-stop suppresses ordinary sticky restart; a later eligible explicit startup event is needed. A manual Hue-app Stop while the relay remains awake may be reversed by maintenance. Explicit relay `SYNC_STOP` cancels maintenance and reconciles off, but does not persist a permanent pause across later process recreation or startup events. Boot still waits 20 seconds from event receipt.
 
 Sleep cancels pending decisions, not an HTTP request already sent to the box. A late Start can momentarily race with sleep; Stop and follow-up off checks compensate. USB power-state detection provides an independent off signal in the documented wiring. Behavior after hard power loss depends on both devices and USB settings.
 
-Optional scene reliability also depends on the media app's playback events. Emby's audio fallback is deliberately limited to its foreground scope. Read's default fail-open behavior can recall Read if the sensor is unavailable within the allowed time window; configure it to false if that is not wanted.
+Optional scene reliability also depends on the media app's playback events. Emby's audio fallback is deliberately limited to its foreground scope. After process recreation a fresh Emby entry event is required; cached foreground context and scenes are not replayed. Read's default fail-open behavior can recall Read if the sensor is unavailable within the allowed time window; configure it to false if that is not wanted.
 
 ## A useful live check after your installation
 

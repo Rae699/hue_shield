@@ -12,7 +12,8 @@ import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-APK = 'releases/hue-sync-relay-1.0.0.apk'
+VERSION = json.loads((ROOT / 'contract.json').read_text())['version']
+APK = f'releases/hue-sync-relay-{VERSION}.apk'
 TOP = {'README.md', 'LICENSE', 'NOTICE', 'contract.json', 'config.example.json', '.gitignore', 'SHA256SUMS',
        'AGENTS.md', 'AI_SETUP.md', 'CONTRIBUTING.md', 'SECURITY.md', 'llms.txt'}
 ANDROID = {'android/AndroidManifest.xml', 'android/build.py', 'android/BUILDING.md', 'android/.gitignore'}
@@ -54,7 +55,8 @@ def allowed(name, directory=False):
         return False
     if directory:
         return name in {'android', 'releases'} | GITHUB_DIRECTORIES or any(name == p or name.startswith(p + '/') for p in RULES)
-    return name in TOP | ANDROID | GITHUB | {APK} or any(name.startswith(p + '/') and PurePosixPath(name).suffix in ext for p, ext in RULES.items())
+    runtime_fixture = name.startswith('android/tests/runtime_fixtures/') and name.endswith('.java.fixture')
+    return runtime_fixture or name in TOP | ANDROID | GITHUB | {APK} or any(name.startswith(p + '/') and PurePosixPath(name).suffix in ext for p, ext in RULES.items())
 
 
 def scan(data, name, budget, depth=0):
@@ -141,7 +143,7 @@ def build_release(root=ROOT, output=None, source_only=False):
     if root.is_symlink():
         reject('symlink', 'package-root')
     root = root.resolve()
-    default_name = 'hue-sync-relay-source-1.0.0.zip' if source_only else 'hue-sync-community-1.0.0.zip'
+    default_name = f'hue-sync-relay-source-{VERSION}.zip' if source_only else f'hue-sync-community-{VERSION}.zip'
     output = Path(output) if output else root.parent / default_name
     try:
         output.resolve().relative_to(root)

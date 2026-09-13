@@ -10,6 +10,10 @@ public final class NativeController {
     public static final int LIMIT = 12;
     public static final long WINDOW = 90000;
     private static final long CALLBACK_TIMEOUT = 45000;
+    private static final long MAINTENANCE_INTERVAL = 60000;
+    private boolean maintenanceEnabled;
+    private long maintenanceDue;
+    private Request maintenanceRequest;
     private long generation;
     private String desired = "none";
     private long deadline;
@@ -34,13 +38,23 @@ public final class NativeController {
     public long deadline() { return deadline; }
     public Request pending() { return pending; }
     public List<String> takeLogs() { List<String> out = new ArrayList<>(logs); logs.clear(); return out; }
+    /** Idle scheduling delay; pending requests, recovery and scenes keep their normal scheduler. */
+    public long maintenanceDelay(long now) {
+        return maintenanceEnabled ? Math.max(0, maintenanceDue-now) : -1;
+    }
+    private void finishWindow(long now) {
+        desired="none"; nextKind=null;
+        if (maintenanceEnabled) maintenanceDue=now+MAINTENANCE_INTERVAL;
+    }
     public void wake(long now, boolean boot) {
+        maintenanceEnabled=true;
         if (desired.equals("awake") && now < deadline) { logs.add("awake event coalesced"); return; }
         generation++; desired="awake"; deadline=now+WINDOW; rounds=0; offConfirmations=0;
         nextKind="PROBE"; due=now+(boot ? 20000 : 2000);
         logs.add(boot ? "boot check scheduled" : "wake check scheduled");
     }
     public void sleep(long now) {
+        maintenanceEnabled=false;
         if (desired.equals("asleep") && now < deadline) return;
         generation++; desired="asleep"; deadline=now+WINDOW; rounds=0; offConfirmations=0;
         sceneRevision++;readRecallPending=false;
@@ -64,17 +78,21 @@ public final class NativeController {
     public void cancelEmbyPause() {if(embyPause) {pauseDue=-1;embyPause=false;}}
     public boolean isIdle() { return pending==null && nextKind==null && scenes.isEmpty() && pauseDue<0 && !readRecallPending; }
     public Request next(long now, boolean interactive) {
-        if (desired.equals("awake") && !interactive) sleep(now);
+        if ((desired.equals("awake") || maintenanceEnabled) && !interactive) sleep(now);
         if (pending != null) {
             if (now >= pending.started+CALLBACK_TIMEOUT) {
                 logs.add("callback timeout; execution uncertain");
-                pending=null;readRecallPending=false;
-                if (desired.equals("awake")) { nextKind=null; desired="none"; }
-                else if (desired.equals("asleep")) { nextKind="STOP"; due=now; }
+                boolean maintenanceTimedOut = pending==maintenanceRequest;
+                boolean currentGeneration = pending.generation==generation;
+                pending=null; maintenanceRequest=null;readRecallPending=false;
+                if (currentGeneration) {
+                    if (desired.equals("awake") || (maintenanceTimedOut && !desired.equals("asleep"))) { finishWindow(now); }
+                    else if (desired.equals("asleep")) { nextKind="STOP"; due=now; }
+                }
             } else { return null; }
         }
         if (!desired.equals("none") && now >= deadline) {
-            logs.add("startup deadline reached"); desired="none"; nextKind=null;
+            logs.add("startup deadline reached"); finishWindow(now);
         }
         if (now >= sceneDeadline) { scenes.clear(); pauseDue=-1; }
         if (!interactive) { scenes.clear(); pauseDue=-1;readRecallPending=false; }
@@ -89,16 +107,20 @@ public final class NativeController {
             String scene=scenes.remove();return dispatch(scene.equals("READ") ? "READ_CHECK" : scene,now);
         }
         if (desired.equals("awake") && interactive && nextKind!=null && now>=due) return dispatchSync(now);
+        if (interactive && maintenanceEnabled && isIdle() && now>=maintenanceDue) {
+            maintenanceRequest=dispatch("PROBE",now);
+            return maintenanceRequest;
+        }
         return null;
     }
     private Request dispatchSync(long now) {
         String kind=nextKind;
         if (kind.equals("PROBE")) {
-            if (rounds>=LIMIT) { logs.add("probe limit reached"); nextKind=null; desired="none"; return null; }
+            if (rounds>=LIMIT) { logs.add("probe limit reached"); finishWindow(now); return null; }
             rounds++;
         }
         if (kind.equals("START") && (rounds>=LIMIT || now+15000>=deadline)) {
-            logs.add("insufficient startup window for Start and verification"); nextKind=null; desired="none"; return null;
+            logs.add("insufficient startup window for Start and verification"); finishWindow(now); return null;
         }
         nextKind=null;
         return dispatch(kind,now);
@@ -125,30 +147,43 @@ public final class NativeController {
             } else {logs.add(finished.kind.equals("READ_CHECK") ? "Read skipped by guard" : "Read Recall finished");}
             return;
         }
+        boolean maintenanceFinished = finished==maintenanceRequest;
+        if (maintenanceFinished) maintenanceRequest=null;
         if (finished.generation!=generation) { logs.add("stale callback discarded"); return; }
-        if (now>=deadline) { desired="none"; nextKind=null; logs.add("startup deadline reached"); return; }
+        if (maintenanceFinished) {
+            if (maintenanceEnabled && result.ok && result.ready && (!result.active || !result.video)) {
+                generation++; desired="awake"; deadline=now+WINDOW; rounds=1; offConfirmations=0;
+                nextKind="START"; due=now;
+                logs.add("maintenance found usable video; recovery scheduled");
+            } else {
+                finishWindow(now);
+                logs.add("maintenance check complete");
+            }
+            return;
+        }
+        if (now>=deadline) { finishWindow(now); logs.add("startup deadline reached"); return; }
         if (finished.kind.equals("START") || finished.kind.equals("STOP")) {
             nextKind="PROBE"; due=now+3000; return;
         }
         if (desired.equals("asleep")) {
             if (result.ok && !result.active) {
                 offConfirmations++;
-                if (offConfirmations>=2) { desired="none"; nextKind=null; logs.add("API off confirmed after compensation interval"); }
+                if (offConfirmations>=2) { finishWindow(now); logs.add("API off confirmed after compensation interval"); }
                 else { nextKind="PROBE"; due=now+10000; logs.add("API off; compensation check scheduled"); }
             } else { nextKind="STOP"; due=now+(result.ok ? 0 : 5000); offConfirmations=0; }
-            if (rounds>=LIMIT) { desired="none"; nextKind=null; logs.add("off probe limit reached"); }
+            if (rounds>=LIMIT) { finishWindow(now); logs.add("off probe limit reached"); }
             return;
         }
         if (!desired.equals("awake")) return;
         if (result.ok && result.ready && result.active && result.video) {
             logs.add("API video sync active");
-            if (rounds>=LIMIT || now+5000>=deadline) { desired="none"; nextKind=null; logs.add("startup checks complete"); }
+            if (rounds>=LIMIT || now+5000>=deadline) { finishWindow(now); logs.add("startup checks complete"); }
             else { nextKind="PROBE"; due=now+5000; }
         } else if (result.ok && result.ready && rounds<LIMIT && now+15000<deadline) {
             nextKind="START"; due=now;
         } else if (rounds<LIMIT && now+5000<deadline) {
             nextKind="PROBE"; due=now+5000; logs.add("waiting for ready video");
-        } else { desired="none"; nextKind=null; logs.add("startup checks exhausted"); }
+        } else { finishWindow(now); logs.add("startup checks exhausted"); }
     }
     public static boolean isScene(String kind) {
         return "CINEMA".equals(kind)||"PAUSE".equals(kind)||"READ".equals(kind)||"CYCLE".equals(kind);
